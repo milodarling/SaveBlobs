@@ -1,0 +1,9 @@
+Package: me.milodarling.saveblobs
+Name: SaveBlobs
+Depends: mobilesubstrate
+Version: 0.0.1
+Architecture: iphoneos-arm
+Description: An awesome MobileSubstrate tweak!
+Maintainer: Milo Darling
+Author: Milo Darling
+Section: Tweaks
