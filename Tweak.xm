@@ -10,7 +10,6 @@ extern "C" {
 #endif
 
 @interface MDSBListener : NSObject <LAListener> {
-    UIImage *dankMeme;
 }
 @end
 
@@ -32,32 +31,34 @@ MDSBListener *myListener;
     return self;
 }
 //trigger listener
--(void)activator:(LAActivator *)activator receiveEvent:(LAEvent *)event forListenerName:(NSString *)listenerName {
+-(void)activator:(LAActivator *)activator receiveEvent:(LAEvent *)event forListenerName:(NSString *)listenerName 
+{
     [event setHandled:YES];
-    NSString *device = @"iPhone6,2";
+
+    NSString *device = (__bridge NSString *)MGCopyAnswer(CFSTR("ProductType"));
+    NSLog(@"Device: %@", device);
     NSString *ecid = [(__bridge NSNumber *)MGCopyAnswer(CFSTR("UniqueChipID")) stringValue];
+
 	NSURL *firmwaresURL = [NSURL URLWithString:[NSString stringWithFormat:@"http://api.ineal.me/tss/%@/includebeta", device]];
-    NSError *jsonDataError = nil;
-    NSData *jsonData = [NSURLConnection sendSynchronousRequest:[NSURLRequest requestWithURL:firmwaresURL] returningResponse:nil error:&jsonDataError];
-    if (jsonDataError) {
+    NSError *firmwaresError = nil;
+    NSData *firmwaresForDevice = [NSURLConnection sendSynchronousRequest:[NSURLRequest requestWithURL:firmwaresURL] returningResponse:nil error:&firmwaresError];
+    if (firmwaresError) {
         NSLog(@"Error :(");
             return;
     }
     NSError *jsonError = nil;
-    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&jsonError];
-    NSLog(@"JSON: %@", json);
+    NSDictionary *firmwaresDict = [NSJSONSerialization JSONObjectWithData:firmwaresForDevice options:0 error:&jsonError];
     if (jsonError) {
         NSLog(@"JSON Error: %@", jsonError);
         return;
     }
-    NSDictionary *deviceInfo = json[device];
+    NSDictionary *deviceInfo = firmwaresDict[device];
     NSString *board = deviceInfo[@"board"];
     NSString *model = deviceInfo[@"model"];
-    NSString *cpid = deviceInfo[@"cpid"];
-    NSString *bdid = deviceInfo[@"bdid"];
+    //NSString *cpid = deviceInfo[@"cpid"];
+    //NSString *bdid = deviceInfo[@"bdid"];
     NSArray *firmwares = deviceInfo[@"firmwares"];
     [deviceInfo writeToFile:@"/var/mobile/Documents/testblobs.plist" atomically:YES];
-    NSLog(@"firmwares: %@", firmwares);
     for (NSDictionary *firmware in firmwares) {
         NSString *build = firmware[@"build"];
         NSString *savePath = [[NSHomeDirectory() stringByAppendingPathComponent:@".shsh"] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_%@_%@-%@.shsh", ecid, model, firmware[@"version"], firmware[@"build"]]];
@@ -65,13 +66,12 @@ MDSBListener *myListener;
             continue;
         NSString *manifestURL = [[@"http://api.ineal.me/tss/manifest/" stringByAppendingPathComponent:board] stringByAppendingPathComponent:build];
         NSError *downloadError = nil;
-        NSData *manifestData = [NSURLConnection sendSynchronousRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:manifestURL]] returningResponse:nil error:&jsonDataError];
+        NSData *manifestData = [NSURLConnection sendSynchronousRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:manifestURL]] returningResponse:nil error:&downloadError];
         if (downloadError) {
             NSLog(@"Error :(");
             return;
         }
         NSString *manifest = [[[NSString alloc] initWithData:manifestData encoding:NSUTF8StringEncoding] stringByReplacingOccurrencesOfString:@"<string>$ECID$</string>" withString:[NSString stringWithFormat:@"<integer>%@</integer>", ecid]];
-        NSLog(@"Manifest: %@", manifest);
 
         NSURL *appleURL = [NSURL URLWithString:@"http://gs.apple.com/TSS/controller?action=2"];
         NSData *postData = [manifest dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:YES];
@@ -98,6 +98,8 @@ MDSBListener *myListener;
         }
         if ([response[@"STATUS"] intValue] == 0) {
             [[response[@"REQUEST_STRING"] dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO] writeToFile:savePath atomically:YES];
+        } else {
+            NSLog(@"Error. Status %@, message: %@", response[@"STATUS"], response[@"MESSAGE"]);
         }
     }
 }
