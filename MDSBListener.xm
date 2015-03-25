@@ -1,32 +1,12 @@
-#import <libactivator/libactivator.h>
-#import <UIKit/UIKit.h>
-
-#if __cplusplus
-extern "C" {
-#endif
-    CFPropertyListRef MGCopyAnswer(CFStringRef property);
-#if __cplusplus
-}
-#endif
-
-@interface MDSBListener : NSObject <LAListener> {
-}
-@end
-
-MDSBListener *myListener;
+#import "MDSBListener.h"
 
 @implementation MDSBListener
 
 -(id)init {
     if (self=[super init]) {
-    	/*
-        listenerCount = 0;
-        prefs = [[HBPreferences alloc] initWithIdentifier:bundleIdentifier];
-    	[prefs registerDefaults:@{
-        	@"listenerCount": @1,
-    	}];
-    	*/
+        prefs = [[HBPreferences alloc] initWithIdentifier:@"me.milodarling.saveblobs"];
         [[LAActivator sharedInstance] registerListener:self forName:@"me.milodarling.saveblobs"];
+        [self loadPrefs];
     }
     return self;
 }
@@ -61,9 +41,14 @@ MDSBListener *myListener;
     [deviceInfo writeToFile:@"/var/mobile/Documents/testblobs.plist" atomically:YES];
     for (NSDictionary *firmware in firmwares) {
         NSString *build = firmware[@"build"];
-        NSString *savePath = [[NSHomeDirectory() stringByAppendingPathComponent:@".shsh"] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_%@_%@-%@.shsh", ecid, model, firmware[@"version"], firmware[@"build"]]];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:savePath])
-            continue;
+        NSString *savePath = [saveDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_%@_%@-%@.shsh", ecid, model, firmware[@"version"], firmware[@"build"]]];
+        NSLog(@"saveDir (pref): %@, savePath: %@", saveDir, savePath);
+        if ([[NSFileManager defaultManager] fileExistsAtPath:savePath]) {
+            if (overwrite)
+                [[NSFileManager defaultManager] removeItemAtPath:savePath error:nil];
+            else
+                continue;
+        }
         NSString *manifestURL = [[@"http://api.ineal.me/tss/manifest/" stringByAppendingPathComponent:board] stringByAppendingPathComponent:build];
         NSError *downloadError = nil;
         NSData *manifestData = [NSURLConnection sendSynchronousRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:manifestURL]] returningResponse:nil error:&downloadError];
@@ -129,8 +114,18 @@ MDSBListener *myListener;
     return nil;
 }
 
+-(void)loadPrefs {
+    overwrite = [prefs boolForKey:kMDSBOverwriteKey default:NO];
+    saveDir = [prefs objectForKey:kMDSBSaveDirectoryKey default:@"/var/mobile/.shsh/"];
+}
+
 @end
+
+static void loadPrefs() {
+    [myListener loadPrefs];
+}
 
 %ctor {
     myListener = [[MDSBListener alloc] init];
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)loadPrefs, CFSTR("me.milodarling.saveblobs/ReloadPrefs"), NULL, 0);
 }
